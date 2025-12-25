@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # Main Application Service (OctoStore API)
+  app:
+    image: octostore-api:latest
+    build:
+      context: ../../
+      dockerfile: Dockerfile
+    container_name: octostore_app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ../../:/var/www
+      - ./php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    environment:
+      - APP_ENV=production
+      - DB_host=db
+      - REDIS_HOST=redis
+    networks:
+      - octostore-network
+
+  # Web Server
+  nginx:
+    image: nginx:alpine
+    container_name: octostore_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../../:/var/www
+      - ./nginx/conf.d/:/etc/nginx/conf.d/
+    networks:
+      - octostore-network
+
+  # Main Database (Tenants & Master)
+  db:
+    image: mysql:8.0
+    container_name: octostore_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: octostore_master
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - dbdata:/var/lib/mysql
+    networks:
+      - octostore-network
+      
+  # Cache & Queues
+  redis:
+    image: redis:alpine
+    container_name: octostore_redis
+    restart: unless-stopped
+    networks:
+      - octostore-network
+
+  # Queue Worker
+  worker:
+    image: octostore-api:latest
+    container_name: octostore_worker
+    restart: unless-stopped
+    command: php artisan queue:work
+    volumes:
+      - ../../:/var/www
+    networks:
+      - octostore-network
+
+networks:
+  octostore-network:
+    driver: bridge
+
+volumes:
+  dbdata:
